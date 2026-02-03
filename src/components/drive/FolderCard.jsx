@@ -1,0 +1,1 @@
+// FolderCard component
