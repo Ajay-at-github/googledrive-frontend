@@ -5,6 +5,7 @@ import UploadZone from "../components/drive/UploadZone";
 import { getFolders, createFolder, deleteFolder, renameFolder, downloadFolder } from "../api/folder.api";
 import { deleteFile, renameFile, getFiles, getDownloadUrl } from "../api/file.api";
 import Breadcrumbs from "../components/drive/Breadcrumbs";
+import { forceDownload } from "../utils/forceDownload";
 
 export default function Dashboard() {
   const [folders, setFolders] = useState([]);
@@ -157,16 +158,10 @@ export default function Dashboard() {
       const res = await getDownloadUrl(file._id);
       const { downloadUrl, fileName } = res.data;
 
-      const response = await fetch(downloadUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName || file.fileName || "download";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      await forceDownload({
+        downloadUrl,
+        fileName: fileName || file.fileName || file.name,
+      });
     } catch (err) {
       console.error("Download failed", err);
       alert("Failed to download file");

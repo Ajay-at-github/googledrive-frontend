@@ -15,6 +15,7 @@ import {
 } from "../api/file.api";
 import { isStarred, toggleStar } from "../utils/starredItems";
 import { isTrashed, addToTrash } from "../utils/trashedItems";
+import { forceDownload } from "../utils/forceDownload";
 
 export function Starred() {
   const outletContext = useOutletContext() || {};
@@ -121,16 +122,10 @@ export function Starred() {
     try {
       const res = await getDownloadUrl(file._id);
       const { downloadUrl, fileName } = res.data;
-      const response = await fetch(downloadUrl);
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName || file.name || "download";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      await forceDownload({
+        downloadUrl,
+        fileName: fileName || file.name || file.fileName,
+      });
     } catch (err) {
       console.error("Download failed", err);
       alert("Failed to download file");
