@@ -10,6 +10,7 @@ export default function Dashboard() {
   const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
   const [currentFolder, setCurrentFolder] = useState(null);
+  const API_ENABLED = !!import.meta.env.VITE_API_BASE_URL;
 
   // Fetch folders on load
   const fetchFolders = async () => {
@@ -17,6 +18,7 @@ export default function Dashboard() {
       const res = await getFolders();
       setFolders(res.data);
     } catch (err) {
+      if (!API_ENABLED) return;
       console.error("Failed to fetch folders", err);
     }
   };
@@ -52,6 +54,7 @@ export default function Dashboard() {
 
       setFiles(normalizedFiles);
     } catch (err) {
+      if (!API_ENABLED) return;
       console.error("Failed to fetch files", err);
     }
   };
@@ -210,6 +213,7 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
+    if (!API_ENABLED) return;
     fetchFolders();
     fetchFiles();
   }, []);

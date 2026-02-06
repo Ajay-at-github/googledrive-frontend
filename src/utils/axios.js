@@ -3,6 +3,9 @@ import axios from "axios";
 const api = axios.create({
   // baseURL: "https://ajay-at-github.github.io/googledrive-backend/api/v1",
   baseURL: import.meta.env.VITE_API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
 api.interceptors.request.use((config) => {

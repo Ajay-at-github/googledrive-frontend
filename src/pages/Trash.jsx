@@ -47,6 +47,7 @@ export function Trash() {
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [viewMode, setViewMode] = useState("list");
   const [showLogout, setShowLogout] = useState(false);
+  const API_ENABLED = !!import.meta.env.VITE_API_BASE_URL;
 
   // Fetch folders
   const fetchFolders = async () => {
@@ -54,6 +55,7 @@ export function Trash() {
       const res = await getFolders();
       setFolders(res.data);
     } catch (err) {
+      if (!API_ENABLED) return;
       console.error("Failed to fetch folders", err);
     }
   };
@@ -70,6 +72,7 @@ export function Trash() {
         .filter((file) => file._id && file.s3Key);
       setFiles(normalizedFiles);
     } catch (err) {
+      if (!API_ENABLED) return;
       console.error("Failed to fetch files", err);
     }
   };
@@ -84,6 +87,7 @@ export function Trash() {
   });
 
   useEffect(() => {
+    if (!API_ENABLED) return;
     fetchFolders();
     fetchFiles();
   }, []);

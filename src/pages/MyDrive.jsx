@@ -28,6 +28,7 @@ export function MyDrive() {
   const [files, setFiles] = useState([]);
   const [items, setItems] = useState([]);
   const [currentFolder, setCurrentFolder] = useState(null);
+  const API_ENABLED = !!import.meta.env.VITE_API_BASE_URL;
 
   // Fetch folders
   const fetchFolders = async () => {
@@ -35,6 +36,7 @@ export function MyDrive() {
       const res = await getFolders();
       setFolders(res.data);
     } catch (err) {
+      if (!API_ENABLED) return;
       console.error("Failed to fetch folders", err);
     }
   };
@@ -58,6 +60,7 @@ export function MyDrive() {
         .filter((file) => file._id && file.s3Key);
       setFiles(normalizedFiles);
     } catch (err) {
+      if (!API_ENABLED) return;
       console.error("Failed to fetch files", err);
     }
   };
@@ -77,6 +80,7 @@ export function MyDrive() {
   };
 
   useEffect(() => {
+    if (!API_ENABLED) return;
     fetchFolders();
     fetchFiles();
   }, []);
