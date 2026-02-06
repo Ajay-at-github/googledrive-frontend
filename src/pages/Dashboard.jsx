@@ -157,12 +157,16 @@ export default function Dashboard() {
       const res = await getDownloadUrl(file._id);
       const { downloadUrl, fileName } = res.data;
 
+      const response = await fetch(downloadUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = fileName; // forces download
+      link.href = url;
+      link.download = fileName || file.fileName || "download";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Download failed", err);
       alert("Failed to download file");
