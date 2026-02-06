@@ -13,9 +13,10 @@ import {
   getFiles,
   getDownloadUrl,
 } from "../api/file.api";
-import { isStarred, toggleStar } from "../utils/starredItems";
+import { addToStarred, isStarred, toggleStar } from "../utils/starredItems";
 import { isTrashed, addToTrash } from "../utils/trashedItems";
 import { forceDownload } from "../utils/forceDownload";
+import { uploadFiles } from "../utils/uploadFiles";
 
 export function Starred() {
   const outletContext = useOutletContext() || {};
@@ -24,7 +25,11 @@ export function Starred() {
   const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
   const [items, setItems] = useState([]);
+  const [uploadingItems, setUploadingItems] = useState([]);
   const API_ENABLED = !!import.meta.env.VITE_API_BASE_URL;
+
+  const toId = (value) =>
+    value?.$oid || value?._id?.$oid || value?._id || value || null;
 
   // Fetch folders
   const fetchFolders = async () => {
@@ -55,13 +60,18 @@ export function Starred() {
   };
 
   // Normalize items
-  const normalizeItem = (item, type) => ({
-    ...item,
-    type: type,
-    id: item._id,
-    starred: isStarred(item._id),
-    trashed: isTrashed(item._id),
-  });
+  const normalizeItem = (item, type) => {
+    const itemId = toId(item._id || item.id || item);
+    return {
+      ...item,
+      type: type,
+      id: itemId,
+      _id: itemId,
+      starred: isStarred(itemId),
+      trashed: isTrashed(itemId),
+      isUploading: Boolean(item.isUploading),
+    };
+  };
 
   useEffect(() => {
     if (!API_ENABLED) return;
@@ -73,11 +83,12 @@ export function Starred() {
   useEffect(() => {
     const combined = [
       ...folders.map((f) => normalizeItem(f, "folder")),
+      ...uploadingItems.map((f) => normalizeItem(f, "file")),
       ...files.map((f) => normalizeItem(f, "file")),
     ]
       .filter((item) => item.starred && !item.trashed);
     setItems(combined);
-  }, [folders, files]);
+  }, [folders, files, uploadingItems]);
 
   const handleStar = (item) => {
     const targetId = item?._id || item?.id;
@@ -114,8 +125,44 @@ export function Starred() {
     }
   };
 
-  const handleUploadFile = (files) => {
-    console.log("Files selected for upload:", files);
+  const handleUploadFile = async (fileList) => {
+    const filesToUpload = Array.from(fileList || []);
+    if (filesToUpload.length === 0) return;
+    const now = Date.now();
+    const pendingItems = filesToUpload.map((file, index) => ({
+      _id: `upload-${now}-${index}`,
+      name: file.name,
+      fileSize: file.size,
+      size: file.size,
+      createdAt: new Date().toISOString(),
+      isUploading: true,
+    }));
+    const pendingIds = pendingItems.map((item) => item._id);
+    setUploadingItems((prev) => [...prev, ...pendingItems]);
+
+    try {
+      const uploaded = await uploadFiles({
+        files: filesToUpload,
+        folderId: null,
+      });
+      const normalized = uploaded.map((file) => ({
+        ...file,
+        name: file.name || file.fileName,
+      }));
+      normalized.forEach((file) => {
+        if (file?._id) {
+          addToStarred(file._id);
+        }
+      });
+      setFiles((prev) => [...prev, ...normalized]);
+    } catch (err) {
+      console.error("File upload failed", err);
+      alert(err.message || "File upload failed");
+    } finally {
+      setUploadingItems((prev) =>
+        prev.filter((item) => !pendingIds.includes(item._id))
+      );
+    }
   };
 
   const handleDownloadFile = async (file) => {

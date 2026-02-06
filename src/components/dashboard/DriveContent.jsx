@@ -247,17 +247,31 @@ export function DriveContent({
                 filteredItems.map((item) => {
                   const Icon = getFileIcon(item);
                   const isStarred = Boolean(item.starred);
+                  const isUploading = Boolean(item.isUploading);
                   return (
                     <div
                       key={item.id}
-                      onClick={() => onItemClick?.(item)}
-                      className="grid cursor-pointer grid-cols-[1.6fr_0.7fr_0.6fr_0.5fr_0.6fr] items-center gap-4 border-b border-slate-100 px-6 py-3 text-sm text-slate-700 transition hover:bg-slate-50"
+                      onClick={() => {
+                        if (!isUploading) {
+                          onItemClick?.(item);
+                        }
+                      }}
+                      className={`grid grid-cols-[1.6fr_0.7fr_0.6fr_0.5fr_0.6fr] items-center gap-4 border-b border-slate-100 px-6 py-3 text-sm text-slate-700 transition ${
+                        isUploading
+                          ? "cursor-default opacity-80"
+                          : "cursor-pointer hover:bg-slate-50"
+                      }`}
                     >
                       <div className="flex items-center gap-3">
                         <Icon className="h-5 w-5 text-slate-500" />
                         <span className="font-medium text-slate-800">
                           {item.name}
                         </span>
+                        {isUploading && (
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-600">
+                            Uploading
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-[10px] font-semibold text-white">
@@ -266,7 +280,11 @@ export function DriveContent({
                         <span className="text-slate-600">me</span>
                       </div>
                       <div className="text-slate-500">
-                        {formatDate(item.modifiedAt || item.updatedAt || item.createdAt)}
+                        {isUploading
+                          ? "Uploading..."
+                          : formatDate(
+                              item.modifiedAt || item.updatedAt || item.createdAt
+                            )}
                       </div>
                       <div className="text-slate-500">
                         {item.type === "folder"
@@ -274,59 +292,73 @@ export function DriveContent({
                           : formatSize(item.size ?? item.fileSize)}
                       </div>
                       <div className="flex items-center gap-3 text-slate-400">
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onStarItem?.(item);
-                          }}
-                          className={`transition ${
-                            isStarred ? "text-yellow-500" : "hover:text-slate-600"
-                          }`}
-                        >
-                          <Star className="h-4 w-4" fill={isStarred ? "currentColor" : "none"} />
-                        </button>
-                        {onRenameItem && (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onRenameItem?.(item);
-                            }}
-                            className="transition hover:text-slate-600"
-                            title="Rename"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
+                        {isUploading ? (
+                          <div className="flex items-center gap-2 text-blue-600">
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+                            <span className="text-xs font-semibold">Uploading</span>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onStarItem?.(item);
+                              }}
+                              className={`transition ${
+                                isStarred
+                                  ? "text-yellow-500"
+                                  : "hover:text-slate-600"
+                              }`}
+                            >
+                              <Star
+                                className="h-4 w-4"
+                                fill={isStarred ? "currentColor" : "none"}
+                              />
+                            </button>
+                            {onRenameItem && (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onRenameItem?.(item);
+                                }}
+                                className="transition hover:text-slate-600"
+                                title="Rename"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                if (item.type === "folder") {
+                                  onDownloadFolder?.(item);
+                                } else {
+                                  onDownloadFile?.(item);
+                                }
+                              }}
+                              className="transition hover:text-slate-600"
+                            >
+                              <Download className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                if (item.type === "folder") {
+                                  setDeleteConfirm({ type: "folder", item });
+                                } else {
+                                  setDeleteConfirm({ type: "file", item });
+                                }
+                              }}
+                              className="transition hover:text-slate-600"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </>
                         )}
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (item.type === "folder") {
-                              onDownloadFolder?.(item);
-                            } else {
-                              onDownloadFile?.(item);
-                            }
-                          }}
-                          className="transition hover:text-slate-600"
-                        >
-                          <Download className="h-4 w-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (item.type === "folder") {
-                              setDeleteConfirm({ type: "folder", item });
-                            } else {
-                              setDeleteConfirm({ type: "file", item });
-                            }
-                          }}
-                          className="transition hover:text-slate-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
                       </div>
                     </div>
                   );

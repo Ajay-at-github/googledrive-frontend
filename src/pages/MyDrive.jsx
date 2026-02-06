@@ -28,6 +28,7 @@ export function MyDrive() {
   const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
   const [items, setItems] = useState([]);
+  const [uploadingItems, setUploadingItems] = useState([]);
   const [currentFolder, setCurrentFolder] = useState(null);
   const API_ENABLED = !!import.meta.env.VITE_API_BASE_URL;
 
@@ -77,6 +78,7 @@ export function MyDrive() {
       parentFolderId: toId(item.parentFolderId),
       starred: isStarred(itemId),
       trashed: isTrashed(itemId),
+      isUploading: Boolean(item.isUploading),
     };
   };
 
@@ -111,12 +113,13 @@ export function MyDrive() {
   useEffect(() => {
     const combined = [
       ...folders.map((f) => normalizeItem(f, "folder")),
+      ...uploadingItems.map((f) => normalizeItem(f, "file")),
       ...files.map((f) => normalizeItem(f, "file")),
     ]
       .filter((item) => !item.trashed)
       .filter(isInCurrentFolder);
     setItems(combined);
-  }, [folders, files, currentFolder]);
+  }, [folders, files, uploadingItems, currentFolder]);
 
   const handleStar = (item) => {
     const targetId = item?._id || item?.id;
@@ -145,10 +148,25 @@ export function MyDrive() {
   };
 
   const handleUploadFile = async (fileList) => {
+    const filesToUpload = Array.from(fileList || []);
+    if (filesToUpload.length === 0) return;
+    const folderId = toId(currentFolder?._id || currentFolder?.id || null);
+    const now = Date.now();
+    const pendingItems = filesToUpload.map((file, index) => ({
+      _id: `upload-${now}-${index}`,
+      name: file.name,
+      fileSize: file.size,
+      size: file.size,
+      folderId,
+      createdAt: new Date().toISOString(),
+      isUploading: true,
+    }));
+    const pendingIds = pendingItems.map((item) => item._id);
+    setUploadingItems((prev) => [...prev, ...pendingItems]);
+
     try {
-      const folderId = toId(currentFolder?._id || currentFolder?.id || null);
       const uploaded = await uploadFiles({
-        files: Array.from(fileList),
+        files: filesToUpload,
         folderId,
       });
       const normalized = uploaded.map(normalizeFile);
@@ -156,6 +174,10 @@ export function MyDrive() {
     } catch (err) {
       console.error("File upload failed", err);
       alert(err.message || "File upload failed");
+    } finally {
+      setUploadingItems((prev) =>
+        prev.filter((item) => !pendingIds.includes(item._id))
+      );
     }
   };
 
