@@ -8,8 +8,10 @@ export const getUploadUrl = (data) => {
   return api.post("/files/upload-url", data);
 };
 
-export const getFiles = () => {
-  return api.get("/files");
+export const getFiles = (folderId) => {
+  return api.get("/files", {
+    params: folderId ? { folderId } : {},
+  });
 };
 
 export const trashFile = (id) =>

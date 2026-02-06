@@ -1,6 +1,7 @@
 import React from "react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import useAuth from "../hooks/useAuth";
 import {
   Trash2,
   Download,
@@ -37,13 +38,15 @@ const navItems = [
 
 export function Trash() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
 
   const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
   const [items, setItems] = useState([]);
   const [selectedItems, setSelectedItems] = useState(new Set());
-  const [showConfirm, setShowConfirm] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const [viewMode, setViewMode] = useState("list");
+  const [showLogout, setShowLogout] = useState(false);
 
   // Fetch folders
   const fetchFolders = async () => {
@@ -175,107 +178,144 @@ export function Trash() {
     }
   };
 
+  const openConfirm = (config) => setConfirmDialog(config);
+
   const handleRestoreSingle = (item) => {
-    removeFromTrash(item._id);
-    setItems((prev) => prev.filter((i) => i.id !== item.id));
-    alert(
-      `Restored ${item.name} to ${item.type === "folder" ? "My Drive" : "its original location"}`
-    );
+    openConfirm({
+      kind: "restore-single",
+      title: "Restore item?",
+      message: `Are you sure you want to restore "${item.name}"?`,
+      confirmLabel: "Restore",
+      confirmTone: "emerald",
+      payload: { item },
+    });
   };
 
-  const handleDeleteSingle = async (item) => {
-    if (
-      !window.confirm(
-        `Permanently delete "${item.name}"? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
-    try {
-      if (item.type === "folder") {
-        await deleteFolder(item._id);
-      } else {
-        await deleteFile(item._id);
-      }
-      removeFromTrash(item._id);
-      setItems((prev) => prev.filter((i) => i.id !== item.id));
-    } catch (err) {
-      console.error("Failed to permanently delete item", err);
-      alert("Failed to delete item: " + err.message);
-    }
+  const handleDeleteSingle = (item) => {
+    openConfirm({
+      kind: "delete-single",
+      title: "Permanently delete?",
+      message: `Are you sure you want to permanently delete "${item.name}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      confirmTone: "red",
+      payload: { item },
+    });
   };
 
   const handleRestoreSelected = () => {
     if (selectedItems.size === 0) return;
-
-    for (const itemId of selectedItems) {
-      removeFromTrash(itemId);
-    }
-    setItems((prev) => prev.filter((i) => !selectedItems.has(i.id)));
-    setSelectedItems(new Set());
-    alert(`Restored ${selectedItems.size} item(s)`);
+    openConfirm({
+      kind: "restore-selected",
+      title: "Restore selected items?",
+      message: `Are you sure you want to restore ${selectedItems.size} item(s)?`,
+      confirmLabel: "Restore",
+      confirmTone: "emerald",
+      payload: { itemIds: Array.from(selectedItems) },
+    });
   };
 
-  const handleDeleteSelected = async () => {
+  const handleDeleteSelected = () => {
     if (selectedItems.size === 0) return;
-
-    if (
-      !window.confirm(
-        `Permanently delete ${selectedItems.size} item(s)? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      for (const itemId of selectedItems) {
-        const item = items.find((i) => i.id === itemId);
-        if (item) {
-          if (item.type === "folder") {
-            await deleteFolder(item._id);
-          } else {
-            await deleteFile(item._id);
-          }
-          removeFromTrash(itemId);
-        }
-      }
-      setItems((prev) => prev.filter((i) => !selectedItems.has(i.id)));
-      setSelectedItems(new Set());
-      alert(`Permanently deleted ${selectedItems.size} item(s)`);
-    } catch (err) {
-      console.error("Failed to delete items", err);
-      alert("Failed to delete some items: " + err.message);
-    }
+    openConfirm({
+      kind: "delete-selected",
+      title: "Permanently delete selected items?",
+      message: `Are you sure you want to permanently delete ${selectedItems.size} item(s)? This cannot be undone.`,
+      confirmLabel: "Delete",
+      confirmTone: "red",
+      payload: { itemIds: Array.from(selectedItems) },
+    });
   };
 
-  const handleEmptyTrash = async () => {
+  const handleEmptyTrash = () => {
     if (items.length === 0) {
       alert("Trash is already empty");
       return;
     }
 
-    if (
-      !window.confirm(
-        `Permanently delete all ${items.length} item(s) in trash? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
+    openConfirm({
+      kind: "empty-trash",
+      title: "Empty Trash?",
+      message: `Are you sure you want to permanently delete all ${items.length} item(s) in trash? This cannot be undone.`,
+      confirmLabel: "Empty Trash",
+      confirmTone: "red",
+      payload: { itemIds: items.map((item) => item.id) },
+    });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmDialog) return;
 
     try {
-      for (const item of items) {
+      if (confirmDialog.kind === "restore-single") {
+        const { item } = confirmDialog.payload;
+        removeFromTrash(item._id);
+        setItems((prev) => prev.filter((i) => i.id !== item.id));
+        setSelectedItems((prev) => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+      }
+
+      if (confirmDialog.kind === "delete-single") {
+        const { item } = confirmDialog.payload;
         if (item.type === "folder") {
           await deleteFolder(item._id);
         } else {
           await deleteFile(item._id);
         }
+        removeFromTrash(item._id);
+        setItems((prev) => prev.filter((i) => i.id !== item.id));
+        setSelectedItems((prev) => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
       }
-      emptyTrashStorage();
-      setItems([]);
-      alert("Trash emptied successfully");
+
+      if (confirmDialog.kind === "restore-selected") {
+        const { itemIds } = confirmDialog.payload;
+        for (const itemId of itemIds) {
+          removeFromTrash(itemId);
+        }
+        setItems((prev) => prev.filter((i) => !itemIds.includes(i.id)));
+        setSelectedItems(new Set());
+      }
+
+      if (confirmDialog.kind === "delete-selected") {
+        const { itemIds } = confirmDialog.payload;
+        for (const itemId of itemIds) {
+          const item = items.find((i) => i.id === itemId);
+          if (item) {
+            if (item.type === "folder") {
+              await deleteFolder(item._id);
+            } else {
+              await deleteFile(item._id);
+            }
+            removeFromTrash(itemId);
+          }
+        }
+        setItems((prev) => prev.filter((i) => !itemIds.includes(i.id)));
+        setSelectedItems(new Set());
+      }
+
+      if (confirmDialog.kind === "empty-trash") {
+        for (const item of items) {
+          if (item.type === "folder") {
+            await deleteFolder(item._id);
+          } else {
+            await deleteFile(item._id);
+          }
+        }
+        emptyTrashStorage();
+        setItems([]);
+        setSelectedItems(new Set());
+      }
     } catch (err) {
-      console.error("Failed to empty trash", err);
-      alert("Failed to empty trash: " + err.message);
+      console.error("Trash action failed", err);
+      alert("Action failed: " + err.message);
+    } finally {
+      setConfirmDialog(null);
     }
   };
 
@@ -313,20 +353,23 @@ export function Trash() {
             })}
           </nav>
 
-          <div className="mt-auto pt-64">
-            <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
-                <Cloud className="h-4 w-4" />
-                Storage
-              </div>
-              <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
-                <div className="h-full w-[13%] bg-blue-600" />
-              </div>
-              <p className="text-xs text-slate-600">2.0 GB of 15 GB used</p>
-              <button className="mt-3 w-full rounded-lg border border-blue-600 px-3 py-1.5 text-xs font-medium text-blue-600 transition hover:bg-blue-50">
-                Get more storage
-              </button>
+          <div className="mt-10 rounded-xl border border-slate-200 bg-white p-4">
+            <div className="mb-3 flex items-center gap-2 text-xs font-medium text-slate-500">
+              <Cloud className="h-4 w-4" />
+              Storage
             </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full w-[18%] rounded-full bg-blue-600" />
+            </div>
+            <div className="mt-2 text-xs text-slate-500">
+              2.0 GB of 15 GB used
+            </div>
+            <button
+              type="button"
+              className="mt-4 w-full rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-600 transition hover:bg-blue-50"
+            >
+              Get more storage
+            </button>
           </div>
         </aside>
 
@@ -335,14 +378,16 @@ export function Trash() {
           {/* Header */}
           <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
             <div className="flex items-center justify-between px-8 py-4">
-              <div className="flex items-center gap-4">
-                <Cloud className="h-6 w-6 text-blue-600" />
-                <h1 className="text-xl font-semibold text-slate-800">CloudDrive</h1>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Cloud className="h-5 w-5" />
+                </div>
+                <span className="text-lg font-semibold">CloudDrive</span>
               </div>
 
               <div className="flex flex-1 items-center justify-center px-12">
-                <div className="relative w-full max-w-2xl">
-                  <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                <div className="relative flex-1 px-6">
+                  <Search className="absolute left-9 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
                     placeholder="Search in Drive"
@@ -351,34 +396,51 @@ export function Trash() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-slate-500">
                 <button
+                  type="button"
                   onClick={() => setViewMode("list")}
                   className={`rounded-lg p-2 transition ${
                     viewMode === "list"
                       ? "bg-blue-100 text-blue-600"
-                      : "text-slate-600 hover:bg-slate-100"
+                      : "hover:bg-slate-100"
                   }`}
                 >
-                  <List className="h-5 w-5" />
+                  <List className="h-4 w-4" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => setViewMode("grid")}
                   className={`rounded-lg p-2 transition ${
                     viewMode === "grid"
                       ? "bg-blue-100 text-blue-600"
-                      : "text-slate-600 hover:bg-slate-100"
+                      : "hover:bg-slate-100"
                   }`}
                 >
-                  <LayoutGrid className="h-5 w-5" />
+                  <LayoutGrid className="h-4 w-4" />
                 </button>
-                <button className="rounded-full p-2 text-slate-600 transition hover:bg-slate-100">
-                  <HelpCircle className="h-5 w-5" />
+                <button type="button" className="rounded-lg p-2 hover:bg-slate-100">
+                  <HelpCircle className="h-4 w-4" />
                 </button>
-                <button className="rounded-full p-2 text-slate-600 transition hover:bg-slate-100">
-                  <Settings className="h-5 w-5" />
-                </button>
-                <div className="ml-2 flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowLogout((prev) => !prev)}
+                    className="rounded-lg p-2 hover:bg-slate-100"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </button>
+                  {showLogout && (
+                    <button
+                      type="button"
+                      onClick={logout}
+                      className="absolute right-0 top-10 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+                    >
+                      Logout
+                    </button>
+                  )}
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-xs font-semibold text-white">
                   U
                 </div>
               </div>
@@ -545,9 +607,48 @@ export function Trash() {
             </table>
           </div>
         )}
+        </div>
+      </main>
+    </div>
+
+    {confirmDialog && (
+      <>
+        <div
+          className="fixed inset-0 z-40 bg-slate-900/40"
+          onClick={() => setConfirmDialog(null)}
+        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+            <div className="border-b border-slate-200 px-6 py-4">
+              <h3 className="text-lg font-semibold text-slate-900">
+                {confirmDialog.title}
+              </h3>
+            </div>
+            <div className="px-6 py-5 text-sm text-slate-600">
+              {confirmDialog.message}
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-6 py-4">
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmAction}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 ${
+                  confirmDialog.confirmTone === "emerald"
+                    ? "bg-emerald-500"
+                    : "bg-red-500"
+                }`}
+              >
+                {confirmDialog.confirmLabel}
+              </button>
+            </div>
           </div>
-        </main>
-      </div>
+        </div>
+      </>
+      )}
     </div>
   );
 }

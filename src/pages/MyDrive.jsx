@@ -39,15 +39,22 @@ export function MyDrive() {
     }
   };
 
+  const toId = (value) =>
+    value?.$oid || value?._id?.$oid || value?._id || value || null;
+
+  const normalizeFile = (file) => ({
+    ...file,
+    name: file.name || file.fileName,
+    folderId: toId(file.folderId),
+    _id: toId(file._id),
+  });
+
   // Fetch files
-  const fetchFiles = async () => {
+  const fetchFiles = async (folderId) => {
     try {
-      const res = await getFiles();
+      const res = await getFiles(folderId);
       const normalizedFiles = res.data
-        .map((file) => ({
-          ...file,
-          name: file.name || file.fileName,
-        }))
+        .map(normalizeFile)
         .filter((file) => file._id && file.s3Key);
       setFiles(normalizedFiles);
     } catch (err) {
@@ -56,23 +63,29 @@ export function MyDrive() {
   };
 
   // Normalize items
-  const normalizeItem = (item, type) => ({
-    ...item,
-    type: type,
-    id: item._id,
-    starred: isStarred(item._id),
-    trashed: isTrashed(item._id),
-  });
+  const normalizeItem = (item, type) => {
+    const itemId = toId(item._id || item.id || item);
+    return {
+      ...item,
+      type: type,
+      id: itemId,
+      _id: itemId,
+      parentFolderId: toId(item.parentFolderId),
+      starred: isStarred(itemId),
+      trashed: isTrashed(itemId),
+    };
+  };
 
   useEffect(() => {
     fetchFolders();
     fetchFiles();
   }, []);
 
-  const normalizeFile = (file) => ({
-    ...file,
-    name: file.name || file.fileName,
-  });
+  useEffect(() => {
+    const folderId = toId(currentFolder?._id || currentFolder?.id || null);
+    fetchFiles(folderId);
+  }, [currentFolder]);
+
 
   const isInCurrentFolder = (item) => {
     if (!currentFolder) {
@@ -81,10 +94,10 @@ export function MyDrive() {
       }
       return item.folderId === null || item.folderId === undefined;
     }
-    const currentFolderId = currentFolder?._id || currentFolder?.id || null;
+    const currentFolderId = toId(currentFolder?._id || currentFolder?.id || currentFolder);
     if (item.type === "folder") {
-      const parentId = item.parentFolderId ? String(item.parentFolderId) : null;
-      return parentId === String(currentFolderId);
+      const parentId = toId(item.parentFolderId);
+      return String(parentId || "") === String(currentFolderId || "");
     }
     return String(item.folderId || "") === String(currentFolderId || "");
   };
@@ -114,7 +127,7 @@ export function MyDrive() {
 
   const handleCreateFolder = async (folderName) => {
     try {
-      const parentFolderId = currentFolder?._id || currentFolder?.id || null;
+      const parentFolderId = toId(currentFolder?._id || currentFolder?.id || null);
       const res = await createFolder({
         name: folderName,
         parentFolderId,
@@ -128,7 +141,7 @@ export function MyDrive() {
 
   const handleUploadFile = async (fileList) => {
     try {
-      const folderId = currentFolder?._id || currentFolder?.id || null;
+      const folderId = toId(currentFolder?._id || currentFolder?.id || null);
       const uploaded = await uploadFiles({
         files: Array.from(fileList),
         folderId,
@@ -172,6 +185,69 @@ export function MyDrive() {
     } catch (err) {
       console.error("Folder download failed", err);
       alert("Failed to download folder");
+    }
+  };
+
+  const handleRenameFolder = async (folder) => {
+    const name = prompt("New folder name", folder.name);
+    if (!name) return;
+    if (!folder._id) {
+      alert("Cannot rename folder: Missing folder ID");
+      return;
+    }
+
+    try {
+      const res = await renameFolder(folder._id, { name });
+      const updatedFolder = res.data.folder || res.data;
+      const nextModifiedAt = new Date().toISOString();
+      setFolders((prev) =>
+        prev.map((f) =>
+          f._id === folder._id
+            ? { ...updatedFolder, modifiedAt: updatedFolder.modifiedAt || nextModifiedAt }
+            : f
+        )
+      );
+      if (currentFolder?._id === folder._id) {
+        setCurrentFolder((prev) => ({
+          ...prev,
+          ...updatedFolder,
+          modifiedAt: updatedFolder.modifiedAt || nextModifiedAt,
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to rename folder", err);
+      alert("Failed to rename folder");
+    }
+  };
+
+  const handleRenameFile = async (file) => {
+    const currentName = file.fileName || file.name || "";
+    const name = prompt("New file name", currentName);
+    if (!name) return;
+    if (!file._id) {
+      alert("Cannot rename file: Missing file ID");
+      return;
+    }
+
+    try {
+      const res = await renameFile(file._id, { name, fileName: name });
+      const updatedFile = res.data.file || res.data;
+      const nextModifiedAt = new Date().toISOString();
+      setFiles((prev) =>
+        prev.map((f) =>
+          f._id === file._id
+            ? {
+                ...f,
+                ...updatedFile,
+                name: updatedFile.name || updatedFile.fileName || name,
+                modifiedAt: updatedFile.modifiedAt || nextModifiedAt,
+              }
+            : f
+        )
+      );
+    } catch (err) {
+      console.error("Failed to rename file", err);
+      alert("Failed to rename file");
     }
   };
 
@@ -220,6 +296,11 @@ export function MyDrive() {
       title="My Drive"
       breadcrumb={breadcrumbs}
       onStarItem={handleStar}
+      onRenameItem={(item) =>
+        item.type === "folder"
+          ? handleRenameFolder(item)
+          : handleRenameFile(item)
+      }
       onDownloadItem={() => {}}
       onTrashItem={() => {}}
       onItemClick={handleItemClick}
